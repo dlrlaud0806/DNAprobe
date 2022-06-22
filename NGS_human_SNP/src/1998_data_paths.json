@@ -1,0 +1,11 @@
+{
+    "base_dir": "201802",
+    "DSP": {
+        "ensembles": "DSP_dna1998.dat",
+        "features": "DSP_dna1998.csv"
+    },
+    "HYB": {
+        "ensembles": "HYB_dna1998.dat",
+        "features": "HYB_dna1998.csv"
+    }
+}

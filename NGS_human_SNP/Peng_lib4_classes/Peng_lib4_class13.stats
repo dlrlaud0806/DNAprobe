@@ -1,0 +1,15 @@
+{
+    "mean_depth": 2.757836100410326,
+    "std_depth": 0.4230222393475186,
+    "mean_dG_target": -3.179617295549821,
+    "mean_dG_protector": -3.1675123163643333,
+    "mean_dG_complement": -57.55179030490547,
+    "std_dG_target": 1.034461109723723,
+    "std_dG_protector": 1.0171109260501159,
+    "std_dG_complement": 7.39372946145733,
+    "global_labels": [
+        "nG<x t^>",
+        "nG[x]{t^*}",
+        "nG[x t^]"
+    ]
+}
