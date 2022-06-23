@@ -7,7 +7,7 @@ Options:
     -h --help                Show this screen.
     --config-file FILE       config file path
     --config JSON            config string
-    --out PATH               log file path
+    --out PATH               log file pkath
     --train PATH             training file path(s)
     --valid PATH             validation file path(s)
     --stats PATH             feature statistics file
@@ -19,17 +19,20 @@ Options:
 from __future__ import print_function
 from docopt import docopt
 import tensorflow as tf
+import torch
+import torch.nn as nn
 import numpy as np
 import utils as u
 import load_data as ld
 import time
 from dual_biGRU import DualBiGRU
-
+import pdb
 
 
 def make_training_ops(basic_loss, hypers):
-    global_step = tf.Variable(0, name='global_step', trainable=False)
-    weights_norm = tf.reduce_mean(tf.stack([tf.nn.l2_loss(w) for w in tf.trainable_variables()]))
+    # global_step = tf.Variable(0, name='global_step', trainable=False)
+    global_step=torch.tensor(0, requires_grad=True)
+    weights_norm = torch.mean(torch.stack([nn.MSELoss(w) for w in tf.trainable_variables()]))
     loss = basic_loss + hypers['weight_decay'] * weights_norm
     lr = hypers['learning_rate']
 
@@ -49,11 +52,10 @@ def make_training_ops(basic_loss, hypers):
 
 def prepare_model(hypers):
     model = DualBiGRU(hypers)
-    model.seal()
     model.set_train_op(make_training_ops(model.metrics['loss'], hypers))
     return model
 
-def training_loop(sess, model, data, hypers, is_training, verbose=True):
+def training_loop(model, data, hypers, is_training, verbose=True):
     loss = accuracy = n_instances = data_ptr = 0
     start_time = time.time()
     
@@ -97,7 +99,7 @@ def training_loop(sess, model, data, hypers, is_training, verbose=True):
        print("loss: %s\t| accuracy: %s\t| instances: %s\t| time: %s" % (loss, accuracy, n_instances, elapsed_time))
     return loss, accuracy, result
 
-def run_epoch(args, model, data, hypers, sess, epoch_id):
+def run_epoch(args, model, data, hypers, epoch_id):
     log_entry = {}
     np.random.shuffle(data['train'])
 
@@ -133,31 +135,58 @@ def run_epoch(args, model, data, hypers, sess, epoch_id):
     return log_entry
 
 def main():
+    #get args
     args = docopt(__doc__)
+    #hyper param setting
     hypers = ld.make_hypers(args)
+    #set seed
     u.set_random_seed(hypers['seed'])
     
+    #get data -> need to understand data
     data = ld.get_all_data(args, hypers)
     hypers['stats'] = ld.load_stats_file(args['--stats'])
 
-    device_id = int(args.get('--device'))
-    device_string = u.get_device_string(device_id)
-    with tf.device(device_string):
-        with tf.variable_scope(tf.get_variable_scope()) as vscope:
-            model = prepare_model(hypers)
-        sess = u.get_tf_session(device_id >= 0)
-        checkpoint = args.get('--ckpt')
-        saver = u.manage_model_restoration(checkpoint, sess)
+    #get gpu
+    cuda = torch.device('cuda')
 
+    with torch.cuda.device(0):
+        #model
+        model = prepare_model(hypers)
+        checkpoint = args.get('--ckpt')
+        model = u.manage_model_restoration(checkpoint, model)
+
+        #optmizer
+
+        #epoch
+        #     # H(x) 계산
+        # prediction = model(x_train)
+        # # model(x_train)은 model.forward(x_train)와 동일함.
+
+        # # cost 계산
+        # cost = F.mse_loss(prediction, y_train) # <== 파이토치에서 제공하는 평균 제곱 오차 함수
+
+        # # cost로 H(x) 개선하는 부분
+        # # gradient를 0으로 초기화
+        # optimizer.zero_grad()
+        # # 비용 함수를 미분하여 gradient 계산
+        # cost.backward()
+        # # W와 b를 업데이트
+        # optimizer.step()
+
+        # if epoch % 100 == 0:
+        # # 100번마다 로그 출력
+        # print('Epoch {:4d}/{} Cost: {:.6f}'.format(
+        #     epoch, nb_epochs, cost.item()
+        # ))
         log_to_save = []
         for epoch in range(hypers['n_epochs']):
-            log_entry = run_epoch(args, model, data, hypers, sess, epoch)
+            log_entry = run_epoch(args, model, data, hypers, epoch)
             log_to_save.append(log_entry)
 
     u.dump_log(log_to_save, hypers, args.get('--out'))
 
     if args['--save_model']:
-        model_save_path = saver.save(sess, '%s.ckpt' % args['--out'])
+        model_save_path = torch.save(model, '%s.pth' % args['--out'])
         print('model saved to %s' % model_save_path)
 
     print('done')

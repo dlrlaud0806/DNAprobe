@@ -51,9 +51,8 @@ def to_instances(data, n_nodes, hypers):
     for d in data:
         
         seq_mask = np.array([hypers['sequence_mask'], hypers['sequence_mask'], hypers['toehold_bit_mask'], hypers['open_prob_mask'], hypers['protected_prob_mask']]).reshape([1,-1])
-        
+        #[1,1,0,1,0]
         f = np.array(d['node_features'])
-        #new_f = np.concatenate([np.matmul(np.array(f[:,:4]), conversion_matrix), f[:,4:-1]], axis=1)
         new_f = np.concatenate([np.matmul(np.array(f[:,:4]), conversion_matrix), f[:,4:]], axis=1)
         masked_f = new_f * seq_mask
         instance_dict = {
