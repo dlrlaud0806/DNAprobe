@@ -1,4 +1,3 @@
-from model import Model
 import numpy as np
 import utils as u
 import torch
@@ -6,89 +5,22 @@ import torch.nn as nn
 
 N_OUT = 2
 
-# class DualBiGRU(Model):
-#     def __init__(self, hypers):
-#         super().__init__(hypers)
-#         self.inputs = {
-#             'seq': np.zeros(None, self.hypers['n_nodes'], self.hypers['x_dim']),
-#             'global_features'  : np.zeros(None, len(self.hypers['global_feature_list'])),
-#             'is_training': False,
-#             'dropout_kp': 1.0
-#         }
-#         output_size_factor = 4 if not self.hypers['symmetric'] else 2
-#         self.output_MLP = u.MLP(
-#             output_size_factor*self.hypers['hidden_size'] 
-#              + len(self.hypers['global_feature_list']),
-#             N_OUT,
-#             self.hypers['output_hid_sizes'])
-
-#     def __call__(self, inputs, out_fmt='regression'):
-#         # target_seq = inputs['seq'][:,:self.hypers['n_nodes']//2, :]
-#         # probe_seq = inputs['seq'][:,self.hypers['n_nodes']//2:, :]
-#         # with tf.variable_scope("target_GRU"):
-#         #     _, rnn_output_states_target = nn.bidirectional_dynamic_rnn(
-#         #         self.fw_cell, self.bw_cell, target_seq, dtype=tf.float32)
-#         # with tf.variable_scope("probe_GRU"):
-#         #     _, rnn_output_states_probe = tf.nn.bidirectional_dynamic_rnn(
-#         #         self.fw_cell, self.bw_cell, probe_seq, dtype=tf.float32)
-#         gru_output = nn.GRU(len(self.hypers['global_feature_list']), self.hypers['hidden_size'], num_layers=2, bidirectional=True)
-        
-
-#         # if self.hypers['bidirectional']:
-#         #     fw_bw_output = tf.concat(list(rnn_output_states_target) + list(rnn_output_states_probe), 1)
-
-#         # if self.hypers['symmetric']:
-#         #     fw_bw_output = tf.concat([rnn_output_states_target[0]+rnn_output_states_probe[0],
-#         #                               rnn_output_states_target[1]+rnn_output_states_probe[1]], 1)
-
-#         if out_fmt == 'regression':
-#             return self.regression_output(gru_output, inputs)
-#         else:
-#             return gru_output
-
-#     def regression_output(self, h, inputs):
-#         #concat global features
-#         h = np.concat([self.hypers['local_feature_weight'] * h, inputs['global_features']], axis=1)
-#         output = self.output_MLP(h)
-#         return {
-#             'pred_mean': np.reshape(output[:,0], [-1]),
-#             'pred_precision': np.reshape(abs(output[:,1]), [-1])
-#         }
-
-#     def make_metrics(self, pred_mean, pred_precision, hypers):
-#         # target = tf.placeholder(tf.float32, [None])
-#         target=0
-#         diff_sqr = (target - pred_mean)**2
-#         if hypers['heteroskedastic']:
-#             loss = torch.mean(0.5 * diff_sqr * pred_precision - 0.5 * torch.log(pred_precision/(2*np.pi)))
-#         else:
-#             loss = torch.mean(0.5 * diff_sqr)
-#         accuracy = torch.sum(diff_sqr)
-#         return {'loss': loss, 'accuracy': accuracy, 'target': target}
-
-#     # def seal(self):
-#     #     self.outputs = self(self.inputs)
-#     #     self.metrics = self.make_metrics(
-#     #         self.outputs['pred_mean'], self.outputs['pred_precision'], self.hypers)
-
 class DualBiGRU(nn.Module):
     def __init__(self, hypers):
+        super(DualBiGRU, self).__init__()
+        self.hypers = hypers
         self.inputs = {
-            'seq': np.zeros(None, self.hypers['n_nodes'], self.hypers['x_dim']),
-            'global_features'  : np.zeros(None, len(self.hypers['global_feature_list'])),
+            # 'seq': np.zeros(None, self.hypers['n_nodes'], self.hypers['x_dim']),
+            # 'global_features'  : np.zeros(None, len(self.hypers['global_feature_list'])),
             'is_training': False,
             'dropout_kp': 1.0
         }
-        output_size_factor = 4 if not self.hypers['symmetric'] else 2
-        self.output_MLP = u.MLP(
-            output_size_factor*self.hypers['hidden_size'] 
-             + len(self.hypers['global_feature_list']),
-            N_OUT,
-            self.hypers['output_hid_sizes'])
-        self.gru = nn.GRU(len(self.hypers['global_feature_list']), self.hypers['hidden_size'], num_layers=2, bidirectional=True)
-        self.outputs = self(self.inputs)
-        self.metrics = self.make_metrics(
-            self.outputs['pred_mean'], self.outputs['pred_precision'], self.hypers)
+        output_size_factor = 2
+        self.mlp = u.MLP(260, 2)
+        self.gru = nn.GRU(len(self.hypers['global_feature_list'])+1, self.hypers['hidden_size'], num_layers=1, bidirectional=True)
+        # self.outputs = self(self.inputs)
+        # self.metrics = self.make_metrics(
+        #     self.outputs['pred_mean'], self.outputs['pred_precision'], self.hypers)
 
     def make_metrics(self, pred_mean, pred_precision, hypers):
         # target = tf.placeholder(tf.float32, [None])
@@ -101,11 +33,41 @@ class DualBiGRU(nn.Module):
         accuracy = torch.sum(diff_sqr)
         return {'loss': loss, 'accuracy': accuracy, 'target': target}
 
-    def forward(self, x):
-        h = self.gru(x)
-        h = np.concat([self.hypers['local_feature_weight'] * h, x['global_features']], axis=1)
-        output = self.output_MLP(h)
+    def set_train_op(self, train_op):
+        self.train_op = train_op
+
+    def forward(self, batch):
+        print("=========gru,40============")
+        print(self.hypers['n_nodes']//2)
+        # global_features = x[]
+        x = batch['x']
+        x=torch.tensor(x).float()
+        print("shape")
+        print(x.shape)
+        
+        target_seq = x[:, :self.hypers['n_nodes']//2, :]
+        probe_seq = x[:, self.hypers['n_nodes']//2:, :]
+        print("============(gru,45)===============")
+        # print("shapes of gru input : ",target_seq.shape, len(probe_seq), target_seq[0])
+
+        _, target_h = self.gru(target_seq)
+        _, probe_h = self.gru(probe_seq)
+        print("gru_first")
+        print(target_h.shape)
+        print(target_h.shape)
+        print(probe_h.shape)
+        output = torch.cat([target_h[0]+probe_h[0],
+                                      target_h[1]+probe_h[1]], 1)
+        print("gru_output")
+        print(output.shape)
+        # temp1 = output.expand(999,80,256)
+        # temp2 = torch.tensor(batch['global_features'][0]).expand(999,80,4)
+        print("before cat")
+        print(torch.tensor(batch['global_features'][0]).shape)
+        h = torch.cat([self.hypers['local_feature_weight'] * output, torch.tensor(batch['global_features'][0])], axis=1)
+        mlp_output = self.mlp(h)
+        print("mlp fin")
         return {
-            'pred_mean': np.reshape(output[:,0], [-1]),
-            'pred_precision': np.reshape(abs(output[:,1]), [-1])
+            'pred_mean': np.reshape(mlp_output[:,0], [-1]),
+            'pred_precision': np.reshape(abs(mlp_output[:,1]), [-1])
         }
